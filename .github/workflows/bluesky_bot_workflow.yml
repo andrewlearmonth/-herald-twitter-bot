@@ -31,12 +31,14 @@ jobs:
         run: python herald_bluesky_bot.py
 
       - name: Commit posted URLs
+        env:
+          TOKEN: ${{ secrets.ACTIONS_PAT }}
         run: |
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
-          touch posted_urls_bluesky.txt
           git add posted_urls_bluesky.txt || echo "No files to add"
           git commit -m "Update posted_urls_bluesky.txt" || echo "No changes to commit"
           git pull origin main --rebase || echo "No pull needed"
-          git push || echo "Nothing to push"
+          git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git || echo "Nothing to push"
+
 
