@@ -99,7 +99,7 @@ class HeraldBlueskyBot:
             return None, None
 
     def post_to_bluesky(self, headline, url):
-        text = f"{headline} {url}"
+        text = headline[:300]  # Bluesky limit
         if len(text) > 300:
             headline = headline[:300 - len(url) - 1]
             text = f"{headline} {url}"
