@@ -3,6 +3,7 @@ import logging
 import re
 import time
 import random
+import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -10,13 +11,13 @@ import pytz
 from playwright.sync_api import sync_playwright
 from atproto import Client, models
 
-# Load env vars
+# Load environment variables
 load_dotenv()
 
-# Logging
+# Logging config
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler("herald_bluesky_bot.log"),
         logging.StreamHandler()
@@ -31,12 +32,11 @@ class HeraldBlueskyBot:
     def __init__(self):
         self.client = Client()
         handle = os.getenv("BLUESKY_HANDLE")
-        if not handle or not os.getenv("BLUESKY_APP_PASSWORD"):
+        password = os.getenv("BLUESKY_APP_PASSWORD")
+        if not handle or not password:
             raise ValueError("Missing Bluesky credentials")
-        self.client.login(
-            login=handle,
-            password=os.getenv("BLUESKY_APP_PASSWORD")
-        )
+        logging.info(f"Logging in to Bluesky as {handle}")
+        self.client.login(login=handle, password=password)
 
     def load_posted_urls(self):
         if not os.path.exists(self.POSTED_URLS_FILE):
@@ -77,6 +77,7 @@ class HeraldBlueskyBot:
 
     def get_article_info(self, url):
         try:
+            time.sleep(random.uniform(1.5, 3.5))
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
                 page = browser.new_page()
@@ -104,10 +105,39 @@ class HeraldBlueskyBot:
             text = f"{headline} {url}"
 
         try:
-            self.client.send_post(text)
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.text, "lxml")
+
+            og_title = soup.find("meta", property="og:title")
+            og_description = soup.find("meta", property="og:description")
+            og_image = soup.find("meta", property="og:image")
+
+            title = og_title["content"] if og_title and og_title.get("content") else headline
+            description = og_description["content"] if og_description and og_description.get("content") else ""
+            image_url = og_image["content"] if og_image and og_image.get("content") else None
+
+            external = models.AppBskyEmbedExternal.External(
+                uri=url,
+                title=title[:300],
+                description=description[:1000],
+            )
+
+            if image_url:
+                try:
+                    image_response = requests.get(image_url, timeout=10)
+                    image_data = image_response.content
+                    blob = self.client.com.atproto.repo.upload_blob(image_data).blob
+                    external.thumb = blob
+                except Exception as e:
+                    logging.warning(f"Failed to fetch or upload OG image: {e}")
+
+            embed = models.AppBskyEmbedExternal.Main(external=external)
+
+            self.client.send_post(text=text, embed=embed)
             self.save_posted_url(url)
-            logging.info(f"Posted to Bluesky: {text}")
+            logging.info(f"Posted to Bluesky with embed: {text}")
             return True
+
         except Exception as e:
             logging.error(f"Failed to post to Bluesky: {e}")
             return False
@@ -139,4 +169,3 @@ if __name__ == "__main__":
     bot = HeraldBlueskyBot()
     bot.run()
     print("Done!")
-
