@@ -54,7 +54,7 @@ class HeraldBlueskyBot:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
                 page = browser.new_page()
-                page.goto(self.POLITICS_URL, timeout=30000)
+                page.goto(self.POLITICS_URL, timeout=30000, wait_until="domcontentloaded")
                 page.wait_for_timeout(5000)
                 html = page.content()
                 browser.close()
