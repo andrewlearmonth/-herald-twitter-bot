@@ -52,7 +52,7 @@ class HeraldBlueskyBot:
         try:
             time.sleep(random.uniform(1.5, 3.5))
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
                 page = browser.new_page()
                 page.goto(self.POLITICS_URL, timeout=30000)
                 page.wait_for_timeout(5000)
@@ -78,7 +78,7 @@ class HeraldBlueskyBot:
     def get_article_info(self, url):
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
                 page = browser.new_page()
                 page.goto(url, timeout=30000)
                 page.wait_for_timeout(3000)
