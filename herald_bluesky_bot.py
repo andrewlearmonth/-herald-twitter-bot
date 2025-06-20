@@ -24,10 +24,13 @@ logging.basicConfig(
     ]
 )
 
+def normalize_url(url):
+    return url.strip().split('?')[0].rstrip('/').lower()
+
 class HeraldBlueskyBot:
     BASE_URL = "https://www.heraldscotland.com"
     POLITICS_URL = f"{BASE_URL}/politics/"
-    POSTED_URLS_FILE = "posted_urls_bluesky.txt"
+    POSTED_URLS_FILE = "posted_urls.txt"  # Shared between bots
 
     def __init__(self):
         self.client = Client()
@@ -42,11 +45,11 @@ class HeraldBlueskyBot:
         if not os.path.exists(self.POSTED_URLS_FILE):
             return set()
         with open(self.POSTED_URLS_FILE, 'r') as f:
-            return set(line.strip() for line in f)
+            return set(normalize_url(line) for line in f)
 
     def save_posted_url(self, url):
         with open(self.POSTED_URLS_FILE, 'a') as f:
-            f.write(f"{url}\n")
+            f.write(f"{normalize_url(url)}\n")
 
     def fetch_article_urls(self):
         try:
@@ -67,7 +70,7 @@ class HeraldBlueskyBot:
                     continue
                 if not re.search(r'/\d{8,}\.', href):
                     continue
-                full_url = (self.BASE_URL + href.split('?')[0]).rstrip('/').lower()
+                full_url = normalize_url(self.BASE_URL + href)
                 urls.add(full_url)
             logging.info(f"Found {len(urls)} article URLs.")
             return list(urls)
@@ -99,7 +102,7 @@ class HeraldBlueskyBot:
             return None, None
 
     def post_to_bluesky(self, headline, url):
-        text = headline[:300]  # Bluesky limit
+        text = headline[:300]  # Bluesky character limit
         if len(text) > 300:
             headline = headline[:300 - len(url) - 1]
             text = f"{headline} {url}"
@@ -135,7 +138,7 @@ class HeraldBlueskyBot:
 
             self.client.send_post(text=text, embed=embed)
             self.save_posted_url(url)
-            logging.info(f"Posted to Bluesky with embed: {text}")
+            logging.info(f"Posted to Bluesky: {url}")
             return True
 
         except Exception as e:
@@ -152,12 +155,15 @@ class HeraldBlueskyBot:
 
         posted_urls = self.load_posted_urls()
         for url in self.fetch_article_urls():
-            if url in posted_urls:
+            norm_url = normalize_url(url)
+            if norm_url in posted_urls:
+                logging.info(f"Already posted: {url}")
                 continue
             headline, published = self.get_article_info(url)
             if not headline or not published:
                 continue
             if (datetime.now(timezone.utc) - published).total_seconds() > 43200:
+                logging.info(f"Too old to post: {url}")
                 continue
             if self.post_to_bluesky(headline, url):
                 break
