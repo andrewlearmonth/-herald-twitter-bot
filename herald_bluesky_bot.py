@@ -30,7 +30,7 @@ def normalize_url(url):
 class HeraldBlueskyBot:
     BASE_URL = "https://www.heraldscotland.com"
     POLITICS_URL = f"{BASE_URL}/politics/"
-    POSTED_URLS_FILE = "posted_urls.txt"  # Shared between bots
+    OWN_POSTED_FILE = "posted_urls_bluesky.txt"
 
     def __init__(self):
         self.client = Client()
@@ -42,13 +42,13 @@ class HeraldBlueskyBot:
         self.client.login(login=handle, password=password)
 
     def load_posted_urls(self):
-        if not os.path.exists(self.POSTED_URLS_FILE):
+        if not os.path.exists(self.OWN_POSTED_FILE):
             return set()
-        with open(self.POSTED_URLS_FILE, 'r') as f:
+        with open(self.OWN_POSTED_FILE, 'r') as f:
             return set(normalize_url(line) for line in f)
 
     def save_posted_url(self, url):
-        with open(self.POSTED_URLS_FILE, 'a') as f:
+        with open(self.OWN_POSTED_FILE, 'a') as f:
             f.write(f"{normalize_url(url)}\n")
 
     def fetch_article_urls(self):
@@ -102,7 +102,7 @@ class HeraldBlueskyBot:
             return None, None
 
     def post_to_bluesky(self, headline, url):
-        text = headline[:300]  # Bluesky character limit
+        text = headline[:300]
         if len(text) > 300:
             headline = headline[:300 - len(url) - 1]
             text = f"{headline} {url}"
@@ -137,7 +137,6 @@ class HeraldBlueskyBot:
             embed = models.AppBskyEmbedExternal.Main(external=external)
 
             self.client.send_post(text=text, embed=embed)
-            self.save_posted_url(url)
             logging.info(f"Posted to Bluesky: {url}")
             return True
 
@@ -154,6 +153,7 @@ class HeraldBlueskyBot:
             return
 
         posted_urls = self.load_posted_urls()
+        logging.info(f"Loaded {len(posted_urls)} previously posted URLs.")
         for url in self.fetch_article_urls():
             norm_url = normalize_url(url)
             if norm_url in posted_urls:
@@ -166,7 +166,8 @@ class HeraldBlueskyBot:
                 logging.info(f"Too old to post: {url}")
                 continue
             if self.post_to_bluesky(headline, url):
-                break
+                self.save_posted_url(url)
+                break  # post only one per run
 
         logging.info("Herald Bluesky bot finished run.")
 
