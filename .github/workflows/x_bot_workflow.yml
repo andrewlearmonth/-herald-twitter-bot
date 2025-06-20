@@ -2,16 +2,18 @@ name: Run Herald Twitter Bot
 
 on:
   schedule:
-    - cron: '15,45 * * * *'  # Runs every 30 mins between hours
-  workflow_dispatch:  # Manual trigger
+    - cron: '15,45 * * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository with full history
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -33,12 +35,12 @@ jobs:
         run: python herald_bot.py
 
       - name: Commit posted URLs
+        env:
+          TOKEN: ${{ secrets.ACTIONS_PAT }}
         run: |
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
           touch posted_urls_twitter.txt
           git add posted_urls_twitter.txt || echo "No files to add"
-          git commit -m "Update posted_urls_twitter.txt" || echo "No changes to commit"
-          git pull origin main --rebase || echo "No pull needed"
-          git push || echo "Nothing to push"
-
+          git commit -m "Update posted_urls_twitter.txt [skip ci]" || echo "No changes to commit"
+          git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }} || echo "Nothing to push"
