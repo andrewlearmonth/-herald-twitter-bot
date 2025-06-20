@@ -2,7 +2,7 @@ name: Run Herald Bluesky Bot
 
 on:
   schedule:
-    - cron: '0,30 * * * *'  # Every 30 mins
+    - cron: '0,30 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -10,8 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository with full history
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -37,8 +39,5 @@ jobs:
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
           git add posted_urls_bluesky.txt || echo "No files to add"
-          git commit -m "Update posted_urls_bluesky.txt" || echo "No changes to commit"
-          git pull origin main --rebase || echo "No pull needed"
-          git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git || echo "Nothing to push"
-
-
+          git commit -m "Update posted_urls_bluesky.txt [skip ci]" || echo "No changes to commit"
+          git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }} || echo "Nothing to push"
