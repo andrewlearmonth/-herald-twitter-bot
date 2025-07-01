@@ -1,3 +1,5 @@
+# herald_bot.py
+
 import os
 import logging
 import re
@@ -23,6 +25,9 @@ logging.basicConfig(
     ]
 )
 
+def normalize_url(url):
+    return url.strip().split('?')[0].rstrip('/').lower()
+
 class HeraldBot:
     BASE_URL = "https://www.heraldscotland.com"
     POLITICS_URL = f"{BASE_URL}/politics/"
@@ -40,11 +45,24 @@ class HeraldBot:
         if not os.path.exists(self.POSTED_URLS_FILE):
             return set()
         with open(self.POSTED_URLS_FILE, 'r') as f:
-            return set(line.strip() for line in f)
+            return set(normalize_url(line) for line in f if line.strip())
 
     def save_posted_url(self, url):
+        norm_url = normalize_url(url)
         with open(self.POSTED_URLS_FILE, 'a') as f:
-            f.write(f"{url}\n")
+            f.write(f"{norm_url}\n")
+            f.flush()
+            os.fsync(f.fileno())
+        logging.info(f"Saved posted URL: {norm_url}")
+
+    def deduplicate_posted_urls(self):
+        if not os.path.exists(self.POSTED_URLS_FILE):
+            return
+        with open(self.POSTED_URLS_FILE, 'r') as f:
+            urls = set(normalize_url(line) for line in f if line.strip())
+        with open(self.POSTED_URLS_FILE, 'w') as f:
+            for url in sorted(urls):
+                f.write(f"{url}\n")
 
     def fetch_article_urls(self):
         try:
@@ -53,7 +71,7 @@ class HeraldBot:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
                 page.goto(self.POLITICS_URL, timeout=30000)
-                page.wait_for_timeout(5000)  # Wait for JavaScript to load
+                page.wait_for_timeout(5000)
                 html = page.content()
                 browser.close()
 
@@ -65,7 +83,7 @@ class HeraldBot:
                     continue
                 if not re.search(r'/\d{8,}\.', href):
                     continue
-                full_url = (self.BASE_URL + href.split('?')[0]).rstrip('/').lower()
+                full_url = normalize_url(self.BASE_URL + href)
                 urls.add(full_url)
             logging.info(f"Found {len(urls)} article URLs.")
             return list(urls)
@@ -110,7 +128,6 @@ class HeraldBot:
     def run(self):
         logging.info("Starting Herald bot run...")
 
-        # Run only during UK waking hours
         bst = pytz.timezone('Europe/London')
         now = datetime.now(timezone.utc).astimezone(bst)
         if not (7 <= now.hour < 20):
@@ -118,17 +135,23 @@ class HeraldBot:
             return
 
         posted_urls = self.load_posted_urls()
+        logging.info(f"Loaded {len(posted_urls)} previously posted URLs.")
+
         for url in self.fetch_article_urls():
-            if url in posted_urls:
+            norm_url = normalize_url(url)
+            if norm_url in posted_urls:
+                logging.info(f"Already posted: {url}")
                 continue
             headline, published = self.get_article_info(url)
             if not headline or not published:
                 continue
             if (datetime.now(timezone.utc) - published).total_seconds() > 43200:
+                logging.info(f"Too old to post: {url}")
                 continue
             if self.post_tweet(headline, url):
-                break
+                break  # Post only one per run
 
+        self.deduplicate_posted_urls()
         logging.info("Herald bot finished run.")
 
 if __name__ == "__main__":
@@ -136,4 +159,3 @@ if __name__ == "__main__":
     bot = HeraldBot()
     bot.run()
     print("Done!")
-
