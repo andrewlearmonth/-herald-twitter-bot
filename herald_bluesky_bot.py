@@ -1,3 +1,5 @@
+# herald_bluesky_bot.py
+
 import os
 import logging
 import re
@@ -45,11 +47,24 @@ class HeraldBlueskyBot:
         if not os.path.exists(self.OWN_POSTED_FILE):
             return set()
         with open(self.OWN_POSTED_FILE, 'r') as f:
-            return set(normalize_url(line) for line in f)
+            return set(normalize_url(line) for line in f if line.strip())
 
     def save_posted_url(self, url):
+        norm_url = normalize_url(url)
         with open(self.OWN_POSTED_FILE, 'a') as f:
-            f.write(f"{normalize_url(url)}\n")
+            f.write(f"{norm_url}\n")
+            f.flush()
+            os.fsync(f.fileno())
+        logging.info(f"Saved posted URL: {norm_url}")
+
+    def deduplicate_posted_urls(self):
+        if not os.path.exists(self.OWN_POSTED_FILE):
+            return
+        with open(self.OWN_POSTED_FILE, 'r') as f:
+            urls = set(normalize_url(line) for line in f if line.strip())
+        with open(self.OWN_POSTED_FILE, 'w') as f:
+            for url in sorted(urls):
+                f.write(f"{url}\n")
 
     def fetch_article_urls(self):
         try:
@@ -167,8 +182,9 @@ class HeraldBlueskyBot:
                 continue
             if self.post_to_bluesky(headline, url):
                 self.save_posted_url(url)
-                break  # post only one per run
+                break  # Post only one per run
 
+        self.deduplicate_posted_urls()
         logging.info("Herald Bluesky bot finished run.")
 
 if __name__ == "__main__":
